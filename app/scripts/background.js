@@ -1,92 +1,90 @@
-'use strict';
-
+"use strict";
 
 function checkAnkiConnection() {
   checkConnection()
     .then(() => {
       console.log("AnkiConnection UP");
-      chrome.storage.sync.set({ankiConnectionStatus: {ok: true, date: "now"}}, function () {
-      });
+      chrome.storage.sync.set(
+        { ankiConnectionStatus: { ok: true, date: "now" } },
+        function () {}
+      );
     })
     .catch(() => {
       console.log("AnkiConnection DOWN");
-      chrome.storage.sync.set({ankiConnectionStatus: {ok: false, date: "now"}}, function () {
-      });
-    })
+      chrome.storage.sync.set(
+        { ankiConnectionStatus: { ok: false, date: "now" } },
+        function () {}
+      );
+    });
   setTimeout(checkAnkiConnection, 10_000);
 }
 
 checkAnkiConnection();
 
-chrome.runtime.onMessage.addListener(
-  (request, sender, sendResponse) => {
-    if (request.action !== "addNotes") {
-      return true
-    }
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action !== "addNotes") {
+    return true;
+  }
 
-    getOrInitProperty("ankiConnectionStatus", {ok: false})
-      .then(ankiConnectionStatus => {
-        if (!ankiConnectionStatus.ok) {
-          sendResponse({addedNotes: -1, totalNotes: -1, error: "Anki is not reachable"})
-          return Promise.reject()
-        }
-      })
-      .then(t => {
-        const deckName = request.deckName
-        const modelName = request.modelName
-        const tagString = request.tagString
-        const notes = request.learnedItems.map(
-          item => ({
-            deckName: deckName,
-            modelName: modelName,
-            fields: {
-              Word: item.learnLanguageText,
-              Picture: item.image && item.image.id
-                ? `<img src='https://images.babbel.com/v1.0.0/images/${item.image.id}/variations/square/resolutions/500x500.png'/>`
-                : '',
-              "Extra Info": item.displayLanguageText
-            },
-            options: {
-              "allowDuplicate": false,
-              "duplicateScope": "deck"
-            },
-            tags: tagString
-              ? tagString.split(',').map(s => s.trim())
-              : [],
-            audio: [{
-              url: `https://sounds.babbel.com/v1.0.0/sounds/${item.sound.id}/normal.mp3`,
-              filename: item.sound.id,
-              fields: [
-                "Pronunciation"
-              ]
-            }]
+  getOrInitProperty("ankiConnectionStatus", { ok: false })
+    .then((ankiConnectionStatus) => {
+      if (!ankiConnectionStatus.ok) {
+        sendResponse({
+          addedNotes: -1,
+          totalNotes: -1,
+          error: "Anki is not reachable",
+        });
+        return Promise.reject();
+      }
+    })
+    .then((t) => {
+      const deckName = request.deckName;
+      const modelName = request.modelName;
+      const tagString = request.tagString;
+      const notes = request.learnedItems.map((item) => ({
+        deckName: deckName,
+        modelName: modelName,
+        fields: {
+          Word: item.learnLanguageText,
+          Picture:
+            item.image && item.image.id
+              ? `<img src='https://images.babbel.com/v1.0.0/images/${item.image.id}/variations/square/resolutions/500x500.png'/>`
+              : "",
+          "Extra Info": item.displayLanguageText,
+        },
+        options: {
+          allowDuplicate: false,
+          duplicateScope: "deck",
+        },
+        tags: tagString ? tagString.split(",").map((s) => s.trim()) : [],
+        audio: [
+          {
+            url: `https://sounds.babbel.com/v1.0.0/sounds/${item.sound.id}/normal.mp3`,
+            filename: item.sound.id,
+            fields: ["Pronunciation"],
+          },
+        ],
+      }));
+      createDeck(deckName)
+        .then(() => createModel(modelName))
+        .then(() => addNotes(notes))
+        .then((response) => ({
+          notesIds: response.result,
+          addedNotes: response.result.filter((e) => e != null).length,
+          totalNotes: response.result.length,
+          error: response.error,
+        }))
+        .then((result) => showNotification(result))
+        .then((result) => sendResponse(result));
+    });
 
-          })
-        );
-        createDeck(deckName)
-          .then(() => createModel(modelName))
-          .then(() => addNotes(notes))
-          .then(response => (
-            {
-              notesIds: response.result,
-              addedNotes: response.result.filter(e => e != null).length,
-              totalNotes: response.result.length,
-              error: response.error
-            })
-          )
-          .then(result => showNotification(result))
-          .then(result => sendResponse(result))
-      })
-
-
-    return true
-  })
-
+  return true;
+});
 
 function createDeck(deckName) {
   return callAnkiConnect("createDeck", {
-    deck: deckName
-  })
+    deck: deckName,
+  });
 }
 
 function createModel(modelName) {
@@ -107,19 +105,17 @@ function createModel(modelName) {
     cardTemplates: [
       {
         Name: "Comprehension Card",
-        Front:
-          `
+        Front: `
 {{Word}}<br>
 {{Pronunciation}}
           `,
-        Back:
-          `
+        Back: `
 {{Word}}<br>
 {{Pronunciation}}
 <hr id=answer>
 {{Picture}} <br>
 <span style="color:grey">{{Extra Info}}</span>
-          `
+          `,
       },
       {
         Name: "Production Card",
@@ -127,8 +123,7 @@ function createModel(modelName) {
 {{Picture}}
 {{Extra Info}} <br>
           `,
-        Back:
-          `
+        Back: `
 {{Picture}}
 {{Extra Info}} <br>
 <hr id=answer>
@@ -136,59 +131,56 @@ function createModel(modelName) {
 <br>
 {{Pronunciation}}
           
-          `
-      }
-    ]
-  })
-
+          `,
+      },
+    ],
+  });
 }
 
 function checkConnection() {
-  return fetch('http://127.0.0.1:8765',
-    {
-      method: 'POST',
-      body: JSON.stringify({action: "version", version: 6})
-    })
+  return fetch("http://127.0.0.1:8765", {
+    method: "POST",
+    body: JSON.stringify({ action: "version", version: 6 }),
+  });
 }
 
 function addNotes(notes) {
   // console.log("addNotes", notes.length)
-  return callAnkiConnect("addNotes", {notes: notes})
+  return callAnkiConnect("addNotes", { notes: notes });
 }
 
-async function callAnkiConnect(action, params = {}, version = 6,) {
-  const response = await fetch('http://127.0.0.1:8765',
-    {
-      method: 'POST',
-      body: JSON.stringify({action, version, params})
-    })
+async function callAnkiConnect(action, params = {}, version = 6) {
+  const response = await fetch("http://127.0.0.1:8765", {
+    method: "POST",
+    body: JSON.stringify({ action, version, params }),
+  });
 
-  return response.json()
+  return response.json();
 }
 
 function showNotification(result) {
   const options = {
     title: `Added ${result.addedNotes} new words`,
     message: `\nTotal words: ${result.totalNotes}`,
-    iconUrl: 'images/icon.png',
-    type: 'basic'
-
-  }
-  chrome.notifications.create('', options);
-  return result
+    iconUrl: "images/icon.png",
+    type: "basic",
+  };
+  chrome.notifications.create("", options);
+  return result;
 }
-
 
 function getOrInitProperty(property, defaultValue) {
   return new Promise((resolve) => {
-      chrome.storage.sync.get([property], result => {
-        if (result[property] === undefined || result[property] == null) {
-          result[property] = defaultValue
-          chrome.storage.sync.set({property: defaultValue},
-            () => console.log(`initiated property ${property} with value ${defaultValue}`));
-        }
-        resolve(result[property])
-      })
-    }
-  )
+    chrome.storage.sync.get([property], (result) => {
+      if (result[property] === undefined || result[property] == null) {
+        result[property] = defaultValue;
+        chrome.storage.sync.set({ property: defaultValue }, () =>
+          console.log(
+            `initiated property ${property} with value ${defaultValue}`
+          )
+        );
+      }
+      resolve(result[property]);
+    });
+  });
 }

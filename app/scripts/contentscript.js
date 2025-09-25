@@ -1,29 +1,27 @@
-'use strict';
+"use strict";
 
 let button, helpLink;
 
 //waits for DOM to load the review button and then injects `Sync with Anki` button into web page.
 function injectSyncButton() {
-  const buttonPrimaryEmphasis = "button[href*='review?'][color='primary-emphasis']"
-  const buttonSecondaryDefault = "button[href*='review?'][color='secondary-default']"
-
-  const reviewButtonNodeList = document.querySelectorAll(buttonPrimaryEmphasis + "," + buttonSecondaryDefault)
-
+  const reviewButtonNodeList = document.querySelectorAll(
+    "button[href*='review?'][color='primary-emphasis']"
+  );
   if (reviewButtonNodeList && reviewButtonNodeList.length === 1) {
     const parent = reviewButtonNodeList[0].parentElement;
     const sibling = reviewButtonNodeList[0];
-    
+
     const syncButtonDiv = createSyncButtonDiv();
 
     const wrapperDiv = document.createElement("div");
-    wrapperDiv.id = "wrapperDiv"
-    wrapperDiv.style.display = "flex"
-    wrapperDiv.style.flexDirection = "row"
+    wrapperDiv.id = "wrapperDiv";
+    wrapperDiv.style.display = "flex";
+    wrapperDiv.style.flexDirection = "row";
 
-    wrapperDiv.append(sibling)
-    wrapperDiv.append(syncButtonDiv)
+    wrapperDiv.append(sibling);
+    wrapperDiv.append(syncButtonDiv);
 
-    parent.append(wrapperDiv)
+    parent.append(wrapperDiv);
   } else {
     requestIdleCallback(injectSyncButton);
   }
@@ -34,19 +32,22 @@ requestIdleCallback(injectSyncButton);
 async function ankiConnectionHealthCheck() {
   if (!button) {
     setTimeout(ankiConnectionHealthCheck, 100);
-    return
+    return;
   }
 
-  const ankiConnectionStatus = await getOrInitProperty("ankiConnectionStatus", {ok: false})
+  const ankiConnectionStatus = await getOrInitProperty("ankiConnectionStatus", {
+    ok: false,
+  });
   if (!ankiConnectionStatus.ok) {
-    console.log("Can't connect to Anki. Please check the readme on github - maybe install AnkiConnect?")
+    console.log(
+      "Can't connect to Anki. Please check the readme on github - maybe install AnkiConnect?"
+    );
     button.classList.add("disabled");
-    helpLink.style.display = "inline-flex"
-
+    helpLink.style.display = "inline-flex";
   } else {
-    console.log("Anki is up")
+    console.log("Anki is up");
     button.classList.remove("disabled");
-    helpLink.style.display = "none"
+    helpLink.style.display = "none";
   }
   setTimeout(ankiConnectionHealthCheck, 10_000);
 }
@@ -54,28 +55,71 @@ async function ankiConnectionHealthCheck() {
 ankiConnectionHealthCheck();
 
 async function syncHandler() {
-
-  const ankiConnectionStatus = await getOrInitProperty("ankiConnectionStatus", {ok: false})
+  const ankiConnectionStatus = await getOrInitProperty("ankiConnectionStatus", {
+    ok: false,
+  });
   if (!ankiConnectionStatus.ok) {
     var popup = document.getElementById("myPopup");
     popup.classList.toggle("show");
-    return
+    return;
   }
 
-  const state = JSON.parse(sessionStorage.getItem('review_manager_state'))
-  const learnedItems = Object.values(state.learnedItems.allItems)
-  console.log('Sending ', learnedItems.length, ' words to Anki. Might take a minute or two to load images and sounds for every word')
-  sendVocabularyToAnki(learnedItems)
-}
+  const stateString = sessionStorage.getItem("review_manager_state");
+  if (!stateString) {
+    console.error(
+      "No review_manager_state found in sessionStorage. Make sure you are on a Babbel review page with learned items."
+    );
+    return;
+  }
 
+  let state;
+  try {
+    state = JSON.parse(stateString);
+  } catch (error) {
+    console.error("Failed to parse review_manager_state:", error);
+    return;
+  }
+
+  if (
+    !state ||
+    !state.learnedItems ||
+    !state.learnedItems.allItems ||
+    !state.learnedItems.currentItemIds
+  ) {
+    console.error(
+      "Invalid state structure. Expected state.learnedItems.allItems and state.learnedItems.currentItemIds to exist."
+    );
+    return;
+  }
+
+  const allItems = state.learnedItems.allItems;
+  const currentItemIds = state.learnedItems.currentItemIds;
+
+  if (!Array.isArray(currentItemIds) || currentItemIds.length === 0) {
+    console.log("No learned items found to sync with Anki.");
+    return;
+  }
+
+  // Convert the object structure to an array of items
+  const learnedItems = currentItemIds
+    .map((id) => allItems[id])
+    .filter((item) => item != null);
+
+  console.log(
+    "Sending ",
+    learnedItems.length,
+    " words to Anki. Might take a minute or two to load images and sounds for every word"
+  );
+  sendVocabularyToAnki(learnedItems);
+}
 
 async function sendVocabularyToAnki(learnedItems) {
   //todo maybe start earlier?
-  startSpinningAnimation()
+  startSpinningAnimation();
 
-  const deckName = await getOrInitProperty('deckName', 'BabbelDeck')
-  const modelName = await getOrInitProperty('modelName', 'BabbelModel')
-  const tagString = await getOrInitProperty('tagString', '')
+  const deckName = await getOrInitProperty("deckName", "BabbelDeck");
+  const modelName = await getOrInitProperty("modelName", "BabbelModel");
+  const tagString = await getOrInitProperty("tagString", "");
 
   chrome.runtime.sendMessage(
     {
@@ -83,59 +127,66 @@ async function sendVocabularyToAnki(learnedItems) {
       learnedItems: learnedItems,
       deckName: deckName,
       modelName: modelName,
-      tagString: tagString
-    }, response => {
-      console.log(`Added ${response.addedNotes}/${response.totalNotes} new words to ${deckName} using model ${modelName} with tags (${tagString})`);
+      tagString: tagString,
+    },
+    (response) => {
+      console.log(
+        `Added ${response.addedNotes}/${response.totalNotes} new words to ${deckName} using model ${modelName} with tags (${tagString})`
+      );
 
-      stopSpinningAnimation()
-    });
+      stopSpinningAnimation();
+    }
+  );
 }
-
 
 function getOrInitProperty(property, defaultValue) {
   return new Promise((resolve) => {
-      chrome.storage.sync.get([property], result => {
-        if (result[property] === undefined || result[property] == null) {
-          result[property] = defaultValue
-          chrome.storage.sync.set({property: defaultValue},
-            () => console.log(`initiated property ${property} with value ${defaultValue}`));
-        }
-        resolve(result[property])
-      })
-    }
-  )
+    chrome.storage.sync.get([property], (result) => {
+      if (result[property] === undefined || result[property] == null) {
+        result[property] = defaultValue;
+        chrome.storage.sync.set({ property: defaultValue }, () =>
+          console.log(
+            `initiated property ${property} with value ${defaultValue}`
+          )
+        );
+      }
+      resolve(result[property]);
+    });
+  });
 }
 
 function startSpinningAnimation() {
-  document.getElementById("sync_spinner").style.animation = "spin 2s linear infinite"
+  document.getElementById("sync_spinner").style.animation =
+    "spin 2s linear infinite";
 }
 
 function stopSpinningAnimation() {
-  document.getElementById("sync_spinner").style.animation = ""
+  document.getElementById("sync_spinner").style.animation = "";
 }
 
 function createSyncButtonDiv() {
   const div = document.createElement("div");
-  div.id = "syncButtonDiv"
-  div.style.display = "flex"
-  div.style.flexDirection = "column"
-  div.style.marginLeft = ".938rem"
+  div.id = "syncButtonDiv";
+  div.style.display = "flex";
+  div.style.flexDirection = "column";
+  div.style.marginLeft = ".938rem";
 
   button = document.createElement("a");
-  button.className = 'babbel-button babbel-font'
+  button.className = "babbel-button babbel-font";
 
   button.innerHTML =
     '<img id="sync_spinner" src="https://icongr.am/clarity/sync.svg?size=20&color=FFFFFF" style="margin-right: 8px" alt="spin me baby"/>' +
-    '<span id="sync_btn_label">Sync to Anki</span>'
-  button.addEventListener('click', syncHandler);
+    '<span id="sync_btn_label">Sync to Anki</span>';
+  button.addEventListener("click", syncHandler);
 
   helpLink = document.createElement("a");
-  helpLink.className = 'helpLink babbel-font'
-  helpLink.href = "https://github.com/pavelgordon/babbel2anki-chrome-extension#more-detailed-guide"
-  helpLink.innerText = "Troubleshoot Babbel2Anki"
+  helpLink.className = "helpLink babbel-font";
+  helpLink.href =
+    "https://github.com/pavelgordon/babbel2anki-chrome-extension#more-detailed-guide";
+  helpLink.innerText = "Troubleshoot Babbel2Anki";
 
-  div.append(button)
-  div.append(helpLink)
+  div.append(button);
+  div.append(helpLink);
 
   return div;
 }
