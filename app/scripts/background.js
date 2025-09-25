@@ -97,13 +97,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         .then((canResp) => {
           const mask = canResp && canResp.result;
           if (!Array.isArray(mask)) {
-            if (DEBUG_LOG) console.warn("[AnkiConnect] Unexpected canAddNotes response:", canResp);
+            if (DEBUG_LOG)
+              console.warn(
+                "[AnkiConnect] Unexpected canAddNotes response:",
+                canResp
+              );
             return {
               notesIds: [],
               addedNotes: 0,
               totalNotes: notes.length,
               duplicates: 0,
-              error: (canResp && canResp.error) || "Unexpected canAddNotes response",
+              error:
+                (canResp && canResp.error) || "Unexpected canAddNotes response",
             };
           }
           const notesToAdd = notes.filter((_, i) => mask[i]);
@@ -136,14 +141,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               };
             }
             if (DEBUG_LOG) {
-              console.warn("[AnkiConnect] Unexpected addNotes response:", addResp);
+              console.warn(
+                "[AnkiConnect] Unexpected addNotes response:",
+                addResp
+              );
             }
             return {
               notesIds: [],
               addedNotes: 0,
               totalNotes: notes.length,
               duplicates,
-              error: (addResp && addResp.error) || "Unexpected AnkiConnect response",
+              error:
+                (addResp && addResp.error) || "Unexpected AnkiConnect response",
             };
           });
         })
@@ -249,9 +258,10 @@ async function callAnkiConnect(action, params = {}, version = 6) {
 
 function showNotification(result) {
   const hasError = !!result.error;
-  const icon = chrome.runtime && chrome.runtime.getURL
-    ? chrome.runtime.getURL("images/icon.png")
-    : "images/icon.png";
+  const icon =
+    chrome.runtime && chrome.runtime.getURL
+      ? chrome.runtime.getURL("images/icon.png")
+      : "images/icon.png";
   const options = {
     title: hasError
       ? "Failed to add words"
